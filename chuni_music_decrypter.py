@@ -164,7 +164,6 @@ class ChuniMusicInputTab(IMessageEditorTab):
                 # レスポンスボディの復号
                 if content.tostring() in self._extender.response_keys:
                     key, iv = self._extender.response_keys[content.tostring()]
-                headersArray = self._extender.extractHeaders(content, isRequest)
                 message = self._extender.extractBody(content, isRequest).tostring()
             out, err = decode(message, key, iv, '1')
             self._txtInput.setText(out)
