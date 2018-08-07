@@ -103,7 +103,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
         else:
             info = self._helpers.analyzeResponse(content)
             headers = info.getHeaders()
-            if len(headers) <= 1 and info.getStatusCode() == 100:
+            if info.getStatusCode() == 100:
                 content = content[info.getBodyOffset():]
                 info = self._helpers.analyzeResponse(content)
         return content[info.getBodyOffset():]
@@ -117,7 +117,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
             info = self._helpers.analyzeResponse(content)
             headers = info.getHeaders()
             headersArray = list(headers)
-            if len(headersArray) <= 1:
+            if info.getStatusCode() == 100:
                 info = self._helpers.analyzeResponse(content[info.getBodyOffset():])
                 headers = info.getHeaders()
                 headersArray.append('')
@@ -170,7 +170,6 @@ class ChuniMusicInputTab(IMessageEditorTab):
                 text = self._extender.extractBody(content, isRequest).tostring()
                 headersArray = self._extender.extractHeaders(content, isRequest)
                 key, iv = self._extender.extractKeyIVFromHeaders(headersArray)
-
             out, err = decode(text, key, iv, '1')
             self._txtInput.setText(out)
             self._txtInput.setEditable(self._editable)
