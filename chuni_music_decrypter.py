@@ -28,8 +28,6 @@ def crypto(mode, text, key, iv, isURL):
     cmd = [PYTHON_PATH, CRYPTO_PATH, mode, text, key, iv, isURL]
     p = Popen(cmd, stdout=PIPE, stderr=PIPE)
     out, err = p.communicate()
-    print(out)
-    sys.stderr.write(err + '\n')
     return out, err
 
 def encode(text, key, iv, isURL):
@@ -58,27 +56,27 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
         self.key = INIT_KEY
         self.iv = INIT_IV
 
+        self.request_keys = {}
+        self.response_keys = {}
+
     # implement IHttpListener
-    # レスポンスに暗号鍵・IVをヘッダーとして追加する
+    # リクエスト・レスポンスを鍵とした暗号鍵・IVの辞書を作る
     def processHttpMessage(self, toolFlag, isRequest, messageInfo):
         if not isRequest:
-            content = messageInfo.getResponse()
-            info = self._helpers.analyzeResponse(content)
+            response = messageInfo.getResponse()
+            request = messageInfo.getRequest()
+            responseBody = self.extractBody(response, isRequest)
 
-            headersArray = self.extractHeaders(content, isRequest)
-            body = self.extractBody(content, isRequest)
+            self.request_keys[request.tostring()] = (self.key, self.iv)
+            self.response_keys[response.tostring()] = (self.key, self.iv)
 
-            headersArray.append("X-CEDEC-KEY: " + self.key)
-            headersArray.append("X-CEDEC-IV: " + self.iv)
-
-            out, err = decode(body.tostring(), self.key, self.iv, '1')
+            out, err = decode(responseBody.tostring(), self.key, self.iv, '1')
             if not self.updateKey(out):
                 # 鍵が合わない場合は初期鍵も試す
-                out, err = decode(body.tostring(), INIT_KEY, INIT_IV, '1')
-                self.updateKey(out)
-
-            newContent = self._helpers.buildHttpMessage(headersArray, body)
-            messageInfo.setResponse(newContent)
+                out, err = decode(responseBody.tostring(), INIT_KEY, INIT_IV, '1')
+                if self.updateKey(out):
+                    self.request_keys[request.tostring()] = (INIT_KEY, INIT_IV)
+                    self.response_keys[response.tostring()] = (INIT_KEY, INIT_IV)
 
     # implement IMessageEditorTabFactory
     def createNewInstance(self, controller, editable):
@@ -124,16 +122,6 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
                 headersArray.extend(list(headers))
         return headersArray
 
-    def extractKeyIVFromHeaders(self, headersArray):
-        key, iv = None, None
-        for header in headersArray:
-            if 'X-CEDEC-KEY' in header:
-                key = header.split(': ')[1]
-            if 'X-CEDEC-IV' in header:
-                iv = header.split(': ')[1]
-        return key, iv
-
-
 # class implementing IMessageEditorTab
 class ChuniMusicInputTab(IMessageEditorTab):
     def __init__(self, extender, controller, editable):
@@ -164,13 +152,16 @@ class ChuniMusicInputTab(IMessageEditorTab):
         else:
             key, iv = self._extender.key, self._extender.iv
             if isRequest:
+                if content.tostring() in self._extender.request_keys:
+                    key, iv = self._extender.request_keys[content.tostring()]
                 parameter = self._extender._helpers.getRequestParameter(content, "data")
-                text = parameter.getValue()
+                message = parameter.getValue()
             else:
-                text = self._extender.extractBody(content, isRequest).tostring()
+                if content.tostring() in self._extender.response_keys:
+                    key, iv = self._extender.response_keys[content.tostring()]
                 headersArray = self._extender.extractHeaders(content, isRequest)
-                key, iv = self._extender.extractKeyIVFromHeaders(headersArray)
-            out, err = decode(text, key, iv, '1')
+                message = self._extender.extractBody(content, isRequest).tostring()
+            out, err = decode(message, key, iv, '1')
             self._txtInput.setText(out)
             self._txtInput.setEditable(self._editable)
 
@@ -180,21 +171,25 @@ class ChuniMusicInputTab(IMessageEditorTab):
     # DecryptedDataタブで編集したメッセージを再暗号化する
     def getMessage(self):
         if self._txtInput.isTextModified():
-            text = self._txtInput.getText().tostring()
+            message = self._txtInput.getText().tostring()
+            key, iv = self._extender.key, self._extender.iv
             if self._currentIsRequest:
-                out, err = encode(text, self._extender.key, self._extender.iv, '1')
+                if self._currentMessage.tostring() in self._extender.request_keys:
+                    key, iv = self._extender.request_keys[self._currentMessage.tostring()]
+                out, err = encode(message, key, iv, '1')
                 content = self._extender._helpers.updateParameter(self._currentMessage, self._extender._helpers.buildParameter("data", out, IParameter.PARAM_BODY))
             else:
+                if self._currentMessage.tostring() in self._extender.response_keys:
+                    key, iv = self._extender.response_keys[self._currentMessage.tostring()]
                 headersArray = self._extender.extractHeaders(self._currentMessage, self._currentIsRequest)
-                key, iv = self._extender.extractKeyIVFromHeaders(headersArray)
-                out, err = encode(text, key, iv, '0')
+                out, err = encode(message, key, iv, '0')
                 content = self._extender._helpers.buildHttpMessage(headersArray, array.array('b', out))
 
             headersArray = self._extender.extractHeaders(content, self._currentIsRequest)
             body = self._extender.extractBody(content, self._currentIsRequest)
             for i in range(len(headersArray)):
                 if 'X-Signature' in headersArray[i]:
-                    headersArray[i] = 'X-Signature: ' + hmac_sign(text)
+                    headersArray[i] = 'X-Signature: ' + hmac_sign(message)
                     break
             return self._extender._helpers.buildHttpMessage(headersArray, body)
         else:
