@@ -11,9 +11,9 @@ import os
 import hashlib
 import hmac
 
-# PyCryptoが使えるPython2系バイナリのパスを指定する
+# PyCryptoが使えるPython2系バイナリのパス
 PYTHON_PATH = '/usr/local/var/pyenv/versions/2.7.14/bin/python'
-# 暗号用スクリプトのパスを指定する
+# 暗号用スクリプトのパス
 CRYPTO_PATH = './tool/crypto.py'
 
 # 初期鍵の設定
@@ -23,8 +23,8 @@ INIT_IV = 'IVisNotSecret123'
 # リクエストボディの署名鍵
 HMAC_KEY = 'newHmacKey'
 
-# 暗号用スクリプトの呼び出し
 def crypto(mode, text, key, iv, isURL):
+    '''暗号用スクリプトの呼び出し'''
     cmd = [PYTHON_PATH, CRYPTO_PATH, mode, text, key, iv, isURL]
     p = Popen(cmd, stdout=PIPE, stderr=PIPE)
     out, err = p.communicate()
@@ -36,8 +36,8 @@ def encode(text, key, iv, isURL):
 def decode(text, key, iv, isURL):
     return crypto('-d', text, key, iv, isURL)
 
-# HMACで署名する
 def hmac_sign(m):
+    '''HMACで署名する'''
     return hmac.new(HMAC_KEY, m, hashlib.sha256).hexdigest()
 
 class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
@@ -84,6 +84,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
 
     # 以下、UTIL的なメソッド
     def updateKey(self, out):
+        '''暗号鍵・IVを更新する'''
         try:
             resp = json.loads(out)
             if 'metadata' in resp:
@@ -96,6 +97,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
         return True
 
     def extractBody(self, content, isRequest):
+        '''array型のrequest/responseからボディを抽出する'''
         if isRequest:
             info = self._helpers.analyzeRequest(content)
         else:
@@ -107,6 +109,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
         return content[info.getBodyOffset():]
 
     def extractHeaders(self, content, isRequest):
+        '''array型のrequest/responseからヘッダーを抽出する'''
         if isRequest:
             info = self._helpers.analyzeRequest(content)
             headers = info.getHeaders()
@@ -152,11 +155,13 @@ class ChuniMusicInputTab(IMessageEditorTab):
         else:
             key, iv = self._extender.key, self._extender.iv
             if isRequest:
+                # リクエストボディの復号
                 if content.tostring() in self._extender.request_keys:
                     key, iv = self._extender.request_keys[content.tostring()]
                 parameter = self._extender._helpers.getRequestParameter(content, "data")
                 message = parameter.getValue()
             else:
+                # レスポンスボディの復号
                 if content.tostring() in self._extender.response_keys:
                     key, iv = self._extender.response_keys[content.tostring()]
                 headersArray = self._extender.extractHeaders(content, isRequest)
@@ -174,11 +179,13 @@ class ChuniMusicInputTab(IMessageEditorTab):
             message = self._txtInput.getText().tostring()
             key, iv = self._extender.key, self._extender.iv
             if self._currentIsRequest:
+                # リクエストボディの暗号化
                 if self._currentMessage.tostring() in self._extender.request_keys:
                     key, iv = self._extender.request_keys[self._currentMessage.tostring()]
                 out, err = encode(message, key, iv, '1')
                 content = self._extender._helpers.updateParameter(self._currentMessage, self._extender._helpers.buildParameter("data", out, IParameter.PARAM_BODY))
             else:
+                # レスポンスボディの暗号化
                 if self._currentMessage.tostring() in self._extender.response_keys:
                     key, iv = self._extender.response_keys[self._currentMessage.tostring()]
                 headersArray = self._extender.extractHeaders(self._currentMessage, self._currentIsRequest)
@@ -187,6 +194,8 @@ class ChuniMusicInputTab(IMessageEditorTab):
 
             headersArray = self._extender.extractHeaders(content, self._currentIsRequest)
             body = self._extender.extractBody(content, self._currentIsRequest)
+
+            # ボディを再署名し、X-Signatureを書き換える
             for i in range(len(headersArray)):
                 if 'X-Signature' in headersArray[i]:
                     headersArray[i] = 'X-Signature: ' + hmac_sign(message)
