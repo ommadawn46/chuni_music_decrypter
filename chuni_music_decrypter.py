@@ -8,6 +8,8 @@ from subprocess import Popen, PIPE
 import json
 import array
 import os
+import hashlib
+import hmac
 
 # PyCryptoが使えるPython2系バイナリのパスを指定する
 PYTHON_PATH = '/usr/local/var/pyenv/versions/2.7.14/bin/python'
@@ -17,6 +19,9 @@ CRYPTO_PATH = './tool/crypto.py'
 # 初期鍵の設定
 INIT_KEY = 'EnJ0YC3D3C2018!!'
 INIT_IV = 'IVisNotSecret123'
+
+# リクエストボディの署名鍵
+HMAC_KEY = 'newHmacKey'
 
 # 暗号用スクリプトの呼び出し
 def crypto(mode, text, key, iv, isURL):
@@ -33,6 +38,9 @@ def encode(text, key, iv, isURL):
 def decode(text, key, iv, isURL):
     return crypto('-d', text, key, iv, isURL)
 
+# HMACで署名する
+def hmac_sign(m):
+    return hmac.new(HMAC_KEY, m, hashlib.sha256).hexdigest()
 
 class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
     # implement IBurpExtender
@@ -58,18 +66,18 @@ class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
             info = self._helpers.analyzeResponse(content)
 
             headersArray = self.extractHeaders(content, isRequest)
-            bodyStr = self.extractBody(content, isRequest)
+            body = self.extractBody(content, isRequest)
 
             headersArray.append("X-CEDEC-KEY: " + self.key)
             headersArray.append("X-CEDEC-IV: " + self.iv)
 
-            out, err = decode(bodyStr.tostring(), self.key, self.iv, '1')
+            out, err = decode(body.tostring(), self.key, self.iv, '1')
             if not self.updateKey(out):
                 # 鍵が合わない場合は初期鍵も試す
-                out, err = decode(bodyStr.tostring(), INIT_KEY, INIT_IV, '1')
+                out, err = decode(body.tostring(), INIT_KEY, INIT_IV, '1')
                 self.updateKey(out)
 
-            newContent = self._helpers.buildHttpMessage(headersArray, bodyStr)
+            newContent = self._helpers.buildHttpMessage(headersArray, body)
             messageInfo.setResponse(newContent)
 
     # implement IMessageEditorTabFactory
@@ -176,12 +184,20 @@ class ChuniMusicInputTab(IMessageEditorTab):
             text = self._txtInput.getText().tostring()
             if self._currentIsRequest:
                 out, err = encode(text, self._extender.key, self._extender.iv, '1')
-                return self._extender._helpers.updateParameter(self._currentMessage, self._extender._helpers.buildParameter("data", out, IParameter.PARAM_BODY))
+                content = self._extender._helpers.updateParameter(self._currentMessage, self._extender._helpers.buildParameter("data", out, IParameter.PARAM_BODY))
             else:
                 headersArray = self._extender.extractHeaders(self._currentMessage, self._currentIsRequest)
                 key, iv = self._extender.extractKeyIVFromHeaders(headersArray)
                 out, err = encode(text, key, iv, '0')
-                return self._extender._helpers.buildHttpMessage(headersArray, array.array('b', out))
+                content = self._extender._helpers.buildHttpMessage(headersArray, array.array('b', out))
+
+            headersArray = self._extender.extractHeaders(content, self._currentIsRequest)
+            body = self._extender.extractBody(content, self._currentIsRequest)
+            for i in range(len(headersArray)):
+                if 'X-Signature' in headersArray[i]:
+                    headersArray[i] = 'X-Signature: ' + hmac_sign(text)
+                    break
+            return self._extender._helpers.buildHttpMessage(headersArray, body)
         else:
             return self._currentMessage
 
