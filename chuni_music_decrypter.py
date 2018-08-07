@@ -7,11 +7,12 @@ from burp import IParameter
 from subprocess import Popen, PIPE
 import json
 import array
+import os
 
-# PyCryptoが使えるPythonのパスを指定する
-PYTHON_PATH = '/usr/local/var/pyenv/shims/python'
+# PyCryptoが使えるPython2系バイナリのパスを指定する
+PYTHON_PATH = '/usr/local/var/pyenv/versions/2.7.14/bin/python'
 # 暗号用スクリプトのパスを指定する
-CRYPTO_PATH = '/Users/kosuke/BurpModules/chuni_music_decrypter/crypto.py'
+CRYPTO_PATH = './tool/crypto.py'
 
 # 初期鍵の設定
 INIT_KEY = 'EnJ0YC3D3C2018!!'
@@ -35,7 +36,7 @@ def decode(text, key, iv, isURL):
 
 class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
     # implement IBurpExtender
-    def	registerExtenderCallbacks(self, callbacks):
+    def registerExtenderCallbacks(self, callbacks):
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
 
