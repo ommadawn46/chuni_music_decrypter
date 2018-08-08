@@ -15,7 +15,7 @@ BurpSuiteにJythonのパスを設定
 <img src="https://raw.githubusercontent.com/ommadawn46/chuni_music_decrypter/image/jython_path.png?token=AJwdE3GA7RxoBeVs_TOmqgyvERVBx_YVks5bdAAnwA%3D%3D" width="500px">
 
 ## Setting
-chuni_music_decrypter.py の`PYTHON_PATH`をPyCryptoをインストールしたバイナリのパスに書き換える
+chuni_music_decrypter.py の`PYTHON_PATH`をPyCryptoをインストールしたPythonのパスに書き換える
 
 pyenvを使用していると`python`ではglobalに設定したバイナリを呼んでくれないので直接パスを指定する必要がある
 
