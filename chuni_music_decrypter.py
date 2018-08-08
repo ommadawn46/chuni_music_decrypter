@@ -11,8 +11,9 @@ import os
 import hashlib
 import hmac
 
-# PyCryptoが使えるPython2系バイナリのパス
-PYTHON_PATH = '/usr/local/var/pyenv/versions/2.7.14/bin/python'
+# PyCryptoモジュールがimportできるPythonのパス
+# pyenvのpythonは'python'で呼び出せないので注意
+PYTHON_PATH = '/usr/local/var/pyenv/versions/3.6.4/bin/python'
 # 暗号用スクリプトのパス
 CRYPTO_PATH = './tool/crypto.py'
 
