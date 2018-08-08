@@ -41,6 +41,14 @@ def hmac_sign(m):
     '''HMACで署名する'''
     return hmac.new(HMAC_KEY, m, hashlib.sha256).hexdigest()
 
+def json_parsable(string):
+    '''文字列がjsonとしてパース可能かどうか'''
+    try:
+        json.loads(string)
+    except:
+        return False
+    return True
+
 class BurpExtender(IBurpExtender, IHttpListener, IMessageEditorTabFactory):
     # implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -182,6 +190,8 @@ class ChuniMusicInputTab(IMessageEditorTab):
                 encrypted = self._extender.extractBody(content, isRequest).tostring()
             # 復号してタブに表示
             plain, err = decrypt(encrypted, key, iv, '1')
+            if not json_parsable(p):
+                plain, err = decrypt(encrypted, INIT_KEY, INIT_IV, '1')
             self._txtInput.setText(plain)
             self._txtInput.setEditable(self._editable)
 
